@@ -1,0 +1,224 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<title>iOS WebView</title>
+	<meta name='viewport' content='width=device-width initial-scale=1.0, maximum-scale=1.0, user-scalable=no'>
+	<meta charset="utf-8" />
+	<script type="text/javascript" src="BannerData.json"></script>
+	<link rel="stylesheet" type="text/css" href="onetrust.css" />
+	<script type='text/javascript' src='knockout-3.5.1.js'></script>
+
+
+
+	<script type="text/javascript">
+		
+		var viewModel;
+
+		function onLoad() {
+			try {
+				if (window.navigator.userAgent.toLowerCase().indexOf("iphone") != -1)
+				{
+					if (window && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.unityControl)
+					{
+						window.Unity =
+								{
+									call: function(msg)
+									{
+										window.webkit.messageHandlers.unityControl.postMessage(msg);
+									}
+								}
+					}
+					else
+					{
+						window.Unity =
+								{
+									call: function(msg)
+									{
+										window.location = 'unity:' + msg;
+									}
+								}
+					}
+				}
+			}
+			catch (err) {
+				document.getElementById("errorMsg").innerHTML += err.message;
+			}
+			finally {
+				Unity.call('OTSDK://banner|readyfordata');
+			}
+			
+			window.onbeforeunload = function(e) {
+				Unity.call(window.location);
+				e.preventDefault();
+			};
+		
+			doDataBinding();
+    	}
+
+		function BannerViewModel() {
+
+			try {
+
+				this.data = jsonDataFromFile;
+
+				 // close button 
+                this.closeButtonShowAsIcon = this.data.closeButtonShow == true && this.data.closeButtonShowAsLink == false && this.data.closeButtonShowText == false;
+                this.closeButtonShowAsTextButton = this.data.closeButtonShow == true && this.data.closeButtonShowAsLink == false && this.data.closeButtonShowText == true;
+                this.closeButtonShowAsLink = this.data.closeButtonShow == true && this.data.closeButtonShowAsLink == true && this.data.closeButtonShowText == true;
+                document.documentElement.style.setProperty('--closeButtonIconColor', this.data.closeButtonTextColorCalculated);
+
+				// settings button
+				this.preferencesButtonShowAsLink = this.data.showPreferencesButtonShow == true && this.data.showPreferencesButtonShowAsLink == true;
+				this.preferencesButtonShowAsButton = this.data.showPreferencesButtonShow == true && this.data.showPreferencesButtonShowAsLink == false;
+
+				// additional descr placement
+                this.showAdditionalDescAfterTitle = this.data.additionalDescriptionShow == true && this.data.additionalDescriptionPlacement == "AfterTitle";
+                this.showAdditionalDescAfterDescription = this.data.additionalDescriptionShow == true && this.data.additionalDescriptionPlacement == "AfterDescription";
+                this.showAdditionalDescAfterDPD = this.data.additionalDescriptionShow == true && this.data.additionalDescriptionPlacement == "AfterDPD";
+
+				// custom aria labels
+                this.policyLinkAriaLabel = this.data.policyLinkText + ", " + this.data.pcPrivacyLinkActionAriaLabel;
+
+				// we need to make sure this start with http if it does not already
+                if (this.data.policyLinkURL != null && !this.data.policyLinkURL.toLowerCase().startsWith("http")) {
+                    this.data.policyLinkURL = "https://" + this.data.policyLinkURL;
+                }
+             
+				// tell the controller we loaded data and request a banner height;
+				var layoutHeight = this.data.layoutHeight;
+                var msgToHost = 'HTTPS://OTSDK/banner|didLoadData|' + layoutHeight;
+                // window.location = msgToHost;
+				Unity.call(msgToHost);
+
+            } catch (err) {
+                document.getElementById("errorMsg").innerHTML = err.message;
+            }
+
+
+            self.policyLinkOnClick = function () {
+                window.location = this.data.policyLinkURL;
+            }
+
+		}
+
+		function doDataBinding() {
+			ko.options.deferUpdates = true;
+			viewModel = new BannerViewModel();
+			ko.applyBindings(viewModel);
+		}
+		
+		function groupsChanged(data) { }
+
+		function bannerColorsChanged(data) { }
+		function pcColorsChanged(data) { }
+		function vendorColorsChanged(data) { }
+        function sdkListConsentsChanged(data) { }
+
+	</script>
+
+</head>
+
+<body onload="onLoad()" data-bind="style:{'background-color':data.backgroundColorCalculated}">
+
+	<div class="wrapper">
+
+		<div style="color:red;" id="errorMsg"></div>
+
+		<div class="header">
+
+			<!--Close Button Show As ICON-->
+			<div role="button" class="closeButton" role="button" data-bind="visible:closeButtonShowAsIcon, style:{'background-color':data.backgroundColorCalculated, 'border-radius':data.closeButtonBorderRadius}, attr:{'aria-label': data.bannerCloseButtonText}" onclick="Unity.call('HTTPS://OTSDK/banner|close');">
+				<div role="button" class="closeIcon"></div>
+			</div>
+
+			<!--Close Button Show As TEXT BUTTON-->
+			<div role="button" style="position: fixed; top: 0; right: 0; margin-right: 10px; margin-top: 20px; " data-bind="visible:closeButtonShowAsTextButton">
+				<div data-bind="text:data.closeButtonText, style:{'background-color':data.closeButtonColorCalculated, color:data.closeButtonTextColorCalculated, fontSize:data.closeButtonFontSize, 'border-radius':data.closeButtonBorderRadius}, attr:{'aria-label': data.bannerCloseButtonText}" style="vertical-align: middle; white-space: nowrap; padding: 10px; font-weight: bold" onclick="Unity.call('HTTPS://OTSDK/banner|close');">X</div>
+			</div>
+
+			<!--Close Button Show As LINK-->
+			<div style="position: fixed; top: 0; right: 0; margin-right: 10px; margin-top: 20px; " data-bind="visible:closeButtonShowAsLink">
+				<div data-bind="text:data.closeButtonText, style:{color:data.closeButtonTextColorCalculated, fontSize:data.closeButtonFontSize}, attr:{'aria-label': data.bannerCloseButtonText}" style="vertical-align: middle; white-space: nowrap; padding: 10px; background-color: transparent; text-decoration: underline; font-weight: bold" onclick="Unity.call('HTTPS://OTSDK/banner|close');">X</div>
+			</div>
+
+		</div>
+
+
+
+		<div class="content">
+
+
+			<!-- Logo Image -->
+			<div class="logo" data-bind="visible:data.logoShow, style:{'margin-top':data.closeButtonShow ? '3em' : '1em'}" style="margin-bottom:1em;">
+				<img style="width:33%" data-bind="attr:{src: data.logoLocalPathForBanner, alt: data.bannerLogoArialLabel}" />
+			</div>
+
+			<!-- Title Text -->
+			<div role="heading" aria-level="1" class="BannerTitle" data-bind="visible:data.titleShow, html:data.titleText, style:{color:data.titleTextColorCalculated, fontSize:data.titleFontSize, 'text-align':data.titleTextAlign, 'margin-top':data.logoShow ? '1em' : '2em'}">titleText</div>
+
+			<!-- Additional Description Text - AFTER TITLE -->
+			<div style="margin-bottom: 0.5em; white-space: pre-line;" data-bind="visible:showAdditionalDescAfterTitle, html:data.additionalDescriptionText, style:{color:data.additionalDescriptionTextColorCalculated, fontSize:data.additionalDescriptionFontSize, 'text-align':data.additionalDescriptionTextAlign}"></div>
+
+			<!-- Description Text -->
+			<div style="margin-bottom: 0.5em; white-space: pre-line;" data-bind="visible:data.descriptionShow, html:data.descriptionText, style:{color:data.descriptionTextColorCalculated, fontSize:data.descriptionFontSize, 'text-align':data.descriptionTextAlign}"></div>
+
+			<!-- POLICY LINK -->
+			<div style="margin-bottom: 0.5em; margin-top: 0.5em; text-decoration: underline; " data-bind="click:policyLinkOnClick, visible:data.policyLinkShow, html:data.policyLinkText, style:{color:data.policyLinkTextColorCalculated, fontSize:data.policyLinkFontSize, 'text-align':data.policyLinkTextAlign}, attr:{'aria-label':policyLinkAriaLabel}"></div>
+
+			<!-- Additional Description Text - AFTER DESCRIPTION -->
+			<div style="margin-bottom: 0.5em; white-space: pre-line;" data-bind="visible:showAdditionalDescAfterDescription, html:data.additionalDescriptionText, style:{color:data.additionalDescriptionTextColorCalculated, fontSize:data.additionalDescriptionFontSize, 'text-align':data.additionalDescriptionTextAlign}"></div>
+
+			<!-- DPD Title Text -->
+			<div class="BannerTitle" data-bind="visible:data.dpdShow, html:data.dpdTitle, style:{color:data.titleTextColorCalculated, fontSize:data.titleFontSize, 'text-align':data.titleTextAlign}"></div>
+
+			<!-- DPD Description Text -->
+			<div style="margin-bottom: 0.5em; white-space: pre-line;" data-bind="visible:data.dpdShow, html:data.dpdDescription, style:{color:data.descriptionTextColorCalculated, fontSize:data.descriptionFontSize, 'text-align':data.descriptionTextAlign}"><br /></div>
+
+			<!-- Additional Description Text - AFTER DPD -->
+			<div style="margin-bottom: 0.5em; white-space: pre-line;" data-bind="visible:showAdditionalDescAfterDPD, html:data.additionalDescriptionText, style:{color:data.additionalDescriptionTextColorCalculated, fontSize:data.additionalDescriptionFontSize, 'text-align':data.additionalDescriptionTextAlign}"></div>
+
+
+		</div>
+
+
+		<!-- Button Container class="StickyBottom"-->
+		<div class="footer">
+
+			<center>
+
+				 <!--vendor list link--> 
+				<p type='button' class="linkButton" onclick="window.location = 'vendors.html?from=banner';" data-bind="visible:data.vendorListShow, html:data.vendorListText, style:{color:data.vendorListTextColorCalculated, fontSize:data.descriptionFontSize, 'text-align':data.descriptionTextAlign}"></p>
+
+				<!--Accept All Link-->
+				<input type='button' value='accept all command' onclick="Unity.call('HTTPS://OTSDK/banner|accept');"
+					   class="cmdButton" data-bind="visible:data.acceptAllButtonShow, attr:{value:data.acceptAllButtonText}, style:{color:data.acceptAllButtonTextColorCalculated, backgroundColor:data.acceptAllButtonColorCalculated, 'border-radius':data.acceptAllButtonBorderRadius, fontSize:data.acceptAllButtonFontSize}" />
+
+				<!--Reject All Link-->
+				<input type='button' value='reject all command' onclick="Unity.call('HTTPS://OTSDK/banner|reject');"
+					   class="cmdButton" data-bind="visible:data.rejectAllButtonShow, attr:{value:data.rejectAllButtonText}, style:{color:data.rejectAllButtonTextColorCalculated, backgroundColor:data.rejectAllButtonColorCalculated, 'border-radius':data.rejectAllButtonBorderRadius, fontSize:data.rejectAllButtonFontSize}" />
+
+				<!--The Manage Preferences Button SHOW AS LINK-->
+				<input type='button' value='manage settings command' onclick="window.location='preference-center.html?from=banner';"
+					   class="cmdButton" style="text-decoration:underline; background-color:transparent"
+					   data-bind="visible:preferencesButtonShowAsLink, attr:{value:data.showPreferencesButtonText}, style:{color:data.showPreferencesButtonTextColorCalculated, fontSize:data.showPreferencesButtonFontSize}" />
+
+				<!--The Manage Preferences Button SHOW AS BUTTON-->
+				<input type='button' value='manage settings command' onclick="window.location='preference-center.html?from=banner';"
+					   class="manageSettingsButton"
+					   data-bind="visible:preferencesButtonShowAsButton, attr:{value:data.showPreferencesButtonText}, style:{color:data.showPreferencesButtonTextColorCalculated, 'border-color':data.showPreferencesButtonTextColorCalculated, backgroundColor:data.showPreferencesButtonColorCalculated, 'border-radius':data.showPreferencesButtonBorderRadius, fontSize:data.showPreferencesButtonFontSize}" />
+
+				<br />
+				<br />
+				
+			</center>
+
+		</div>
+
+
+	</div>
+
+
+</body>
+
+</html>

@@ -1,0 +1,8 @@
+apply plugin: 'com.android.asset-pack'
+
+assetPack {
+    packName = "UnityStreamingAssetsPack"
+    dynamicDelivery {
+        deliveryType = "install-time"
+    }
+}

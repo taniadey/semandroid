@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
+		<!--<script src="sample.js"></script>-->
+		<style>
+			body {
+				margin:0px;
+				padding:0px;
+			}
+			
+			.logo {
+				text-align:center;
+				margin-top: 4em;
+			}
+			
+			h1, h2, h3, h4, h5, h6 {
+				margin-left: 20px;
+				margin-right: 20px;
+			}
+			
+			p {
+				margin-left: 20px;
+				margin-right: 20px;
+				font-size: 14pt;
+			}
+			
+			.content_div {
+				display:flex;
+				flex-direction:column;
+				height: 100%;
+				text-align:center;
+			}
+		
+			.bottom-button-div {
+				margin:auto;
+				height:auto;
+				bottom: 0px;
+				width: 100%;
+				text-align:center;
+				position: fixed;
+			}
+			
+			.full_width_button {
+				margin-bottom:10px;
+				height:50px;
+				width: 90%;
+				font-size:14pt;
+				box-sizing: border-box;
+				text-align: center;
+			}
+		</style>
+	</head>
+
+	<body>
+	    <div class="logo">
+			<img src="sample.png" width="50%"/> 
+		</div>
+		<div class="content_div">
+			<h1>Age Verification</h1>
+			<p style="margin-left:20px;margin-right:20px;">The following content is intended for a mature audience. As part of our commitment to showing age appropriate content to children, please confirm you are over the age of 16 before proceeding</p>
+		</div>
+		<div class="bottom-button-div">
+			<a href="javascript:void(0)" style="text-decoration:none;" onclick="Unity.call('OTDSK://ageGate|yes');"><button class="full_width_button" style="margin-top:10px;background-color:#0068d1;">Yes</button></a>
+			<a href="javascript:void(0)" style="text-decoration: none;" onclick="Unity.call('OTDSK://ageGate|no');"><button class="full_width_button">No</button></a>
+		</div>
+		<!--<div id="msg">[]</div>
+		<p><a href="javascript:void(0)" onclick="window.location='otsdk://banner|acceptAll';">[Send 2nd Message!]</a></p>
+		<p><a href="javascript:void(0)" onclick="window.location='otsdk://pc|toggle|xyz123|true';">[Send 2nd Message!]</a></p>-->
+		
+		
+		<!--<form method="get" action="form">
+			<input id="input1" type="text" value="hoge" name="msg"/>
+			<input type="submit" value="Send Message!" onclick="Unity.call('form?msg=' + document.getElementById('input1').value); return false;"/><br/>
+			<input type="file" name="datafile"/>
+		</form>-->
+	</body>
+</html>

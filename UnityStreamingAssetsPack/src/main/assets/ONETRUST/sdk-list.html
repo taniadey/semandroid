@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<title>Android WebView</title>
+	<meta name='viewport' content='width=device-width initial-scale=1.0, maximum-scale=1.0, user-scalable=no'>
+	<meta charset="utf-8" />
+	<script type="text/javascript" src="PreferenceCenterData.json"></script>
+	<script type="text/javascript" src="ot-utility.js"></script>
+	<link rel="stylesheet" type="text/css" href="onetrust.css" />
+	<script type='text/javascript' src='knockout-3.5.1.js'></script>
+
+
+	<script type="text/javascript">
+
+        var viewModel;
+
+		function onLoad() {
+		
+            try {
+			if (window.navigator.userAgent.toLowerCase().indexOf("iphone") != -1)
+			{
+             		if (window && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.unityControl)
+	            	{
+						window.Unity = 
+						{	
+                			call: function(msg) 
+						{
+					    window.webkit.messageHandlers.unityControl.postMessage(msg);
+	                    }
+                    }
+            }
+            else
+            {
+	            window.Unity = 
+				{
+	                        	call: function(msg) 
+					{
+		                           window.location = 'unity:' + msg;
+                  			}
+                	}
+            	}
+       		}
+			
+                doDataBinding();
+
+
+			} catch (err) {
+				document.getElementById("errorMsg").innerHTML = err.message;
+
+            } finally {
+                Unity.call('HTTPS://OTSDK/sdkList|didloaddata');
+			}
+
+		}
+
+        function doDataBinding() {
+            ko.options.deferUpdates = true;
+			ko.applyBindings(new PreferenceCenterModel());
+		}
+
+
+		function PreferenceCenterModel() {
+			this.data = jsonDataFromFile;
+
+
+			this.data.showNavBar = true;
+			this.data.showBackButton = true;
+            this.showClearButton = ko.observable(false);
+            this.searchValue = ko.observable("");
+           
+            this.searchHasFocus = ko.observable(false);
+            this.searchHasFocus.subscribe(function (val) {
+                if (val == true) {
+                    this.showingFilter(false);
+                } 
+
+            }, this);
+
+
+            this.showingFilter = ko.observable(false);
+            this.showingFilter.subscribe(function (val) {
+                if (val == true) {
+                    document.getElementById("footer").classList.add('dim');
+                } else {
+                    document.getElementById("footer").classList.remove('dim');
+                }
+                
+            }, this);
+
+
+            document.getElementById("noFilter").style = "Display:none";
+            document.getElementById("filterApplied").style = "Display:block";
+
+
+            // modify the toggle button colors;
+            document.documentElement.style.setProperty('--toggleBorderColor', this.data.purposeListItemTitleTextColorCalculated);
+            document.documentElement.style.setProperty('--toggleActiveColor', this.data.toggleActiveColorCalculated);
+            document.documentElement.style.setProperty('--toggleInactiveColor', this.data.toggleInactiveColorCalculated);
+            document.documentElement.style.setProperty('--toggleActiveColorThumb', pSBC(-0.42, this.data.toggleActiveColorCalculated));
+            document.documentElement.style.setProperty('--toggleInactiveColorThumb', pSBC(-0.50, this.data.toggleInactiveColorCalculated));
+            document.documentElement.style.setProperty('--placeholderTextColor', pSBC(-0.50, this.data.purposeListItemTitleTextColorCalculated));
+            document.documentElement.style.setProperty('--filterColor', this.data.savePreferencesButtonColorCalculated);
+            document.documentElement.style.setProperty('--spyGlassColor', this.data.purposeListItemTitleTextColorCalculated);
+
+
+
+            // color for table borders and <hr>'s ;
+            var shadeDelta = 0.20;
+            if (this.data.backgroundColorCalculated.match(/^(?:white|#fff(?:fff)?|rgba?\(\s*255\s*,\s*255\s*,\s*255\s*(?:,\s*1\s*)?\))$/i)) { shadeDelta = shadeDelta * -1; }
+            document.documentElement.style.setProperty('--tableBorderColor', pSBC(shadeDelta, this.data.backgroundColorCalculated));
+
+      
+
+			const queryString = window.location.search;
+			const urlParams = new URLSearchParams(queryString);
+			const requestedOptanonGroupId = urlParams.get('OptanonGroupId');
+            this.orginalSelectedFilters = [];
+
+            var hideChildernForTheseParents = [];
+            for (const jsonDataKey in this.data.groups) {
+                var groupItem = this.data.groups[jsonDataKey];
+
+                var rule1 = (groupItem.isParent == true && groupItem.ShowSubgroup == false);
+
+                if (rule1) {
+                    hideChildernForTheseParents.push(groupItem.OptanonGroupId);
+                }
+            }
+                        		
+            this.FilterGroupNames = ko.observableArray([]);
+            for (const jsonDataKey in this.data.groups) {
+
+                var groupItem = this.data.groups[jsonDataKey];
+
+                if (groupItem.IsIabPurpose == true) {
+                    continue;
+                }
+
+                if (groupItem.isParent == true && groupItem.FPCCount == 0 && groupItem.ShowSubgroup == true && groupItem.childernFPCCount > 0) {
+                    continue;
+                }
+
+                if (groupItem.isParent == true && groupItem.childernCount == 0 && groupItem.FPCCount == 0) {
+                    continue;
+                }
+
+                if (groupItem.isParent == false && hideChildernForTheseParents.includes(groupItem.Parent)) {
+                    continue;
+                }
+
+                if (groupItem.ShowSubgroup == false && groupItem.parentShowSubgroup == false) {
+                    continue;
+                }
+
+                if (groupItem.isParent == false && groupItem.FPCCount == 0) {
+                    continue;
+                }
+
+
+                var filterItem = {};
+                filterItem.OptanonGroupId = groupItem.OptanonGroupId;
+                filterItem.Parent = groupItem.Parent;
+                filterItem.filterName = groupItem.GroupNameMobile;
+                filterItem.isSelected = ko.observable(groupItem.OptanonGroupId == requestedOptanonGroupId || groupItem.Parent == requestedOptanonGroupId);
+                this.FilterGroupNames.push(filterItem);
+
+
+                // remember this for when they tap the filter cancel button //
+                if (filterItem.isSelected() == true) {
+                    this.orginalSelectedFilters.push(groupItem.GroupNameMobile);
+                }
+
+
+
+                // when a filter toggle changes //
+
+                filterItem.isSelected.subscribe(function (val) {
+
+                    // get all the selected toggles
+
+                    var selectedItems = [];
+                    var arrayLength = this.selectedFilterItems().length;
+                    for (let i = 0; i < arrayLength; i++) {
+                        var filterItem = this.selectedFilterItems()[i];
+                        selectedItems.push(filterItem.OptanonGroupId);
+                    }
+
+
+                    var arrayLength = this.FirstPartyCookies().length;
+                    for (let i = 0; i < arrayLength; i++) {
+                        var fpCookie = this.FirstPartyCookies()[i];
+                        if (selectedItems.includes(fpCookie.OptanonGroupId) || selectedItems.includes(fpCookie.Parent)) {
+                            fpCookie.matchesFilter(true);
+                        } else {
+                            fpCookie.matchesFilter(false);
+                        }
+                    }
+
+
+                    if (selectedItems.length == 0) {
+                        document.getElementById("noFilter").style = "Display:block";
+                        document.getElementById("filterApplied").style = "Display:none";
+                        document.documentElement.style.setProperty('--filterColor', this.data.purposeListItemTitleTextColorCalculated);
+
+                        // MOB-10759 - show all records if no filters selected //
+
+                        var arrayLength = this.FirstPartyCookies().length;
+                        for (let i = 0; i < arrayLength; i++) {
+                            var fpCookie = this.FirstPartyCookies()[i];
+                            fpCookie.matchesFilter(true)
+                        }
+
+
+                    } else {
+                        document.getElementById("noFilter").style = "Display:none";
+                        document.getElementById("filterApplied").style = "Display:block";
+                        document.documentElement.style.setProperty('--filterColor', this.data.savePreferencesButtonColorCalculated);
+                    }
+
+                }, this);
+            }
+
+
+            this.FirstPartyCookies = ko.observableArray([]);
+
+            this.filteredFirstPartyCookies = ko.computed(function () { return ko.utils.arrayFilter(this.FirstPartyCookies(), function (item) { return ((item.matchesFilter() == true && item.didMatchSearch() == true)); }); }, this);
+            this.selectedFilterItems = ko.computed(function () { return ko.utils.arrayFilter(this.FilterGroupNames(), function (item) { return item.isSelected() == true; }); }, this);
+            this.selectedSDKs = ko.computed(function () { return ko.utils.arrayFilter(this.FirstPartyCookies(), function (item) { return ((item.matchesFilter() == true && item.didMatchSearch() == true && item.uiControlState() == 1)); }); }, this);
+            this.isAllFilteredSelected = ko.computed(function () { return this.selectedSDKs().length == this.filteredFirstPartyCookies().length }, this);
+
+                
+			for (const jsonDataKey in this.data.groups) {
+				const groupItem = this.data.groups[jsonDataKey];
+                    for (const fpcKey in groupItem.FirstPartyCookies) {
+                        var fpCookie = groupItem.FirstPartyCookies[fpcKey];
+                        fpCookie.OptanonGroupId = groupItem.OptanonGroupId;
+                        fpCookie.Parent = groupItem.Parent;
+                        fpCookie.GroupNameMobile = groupItem.GroupNameMobile;
+                        fpCookie.uiControlState = ko.observable(fpCookie.uiControlState);
+                        fpCookie.searchName = fpCookie.Name.toUpperCase();
+                        fpCookie.didMatchSearch = ko.observable(true);
+                        fpCookie.matchesFilter = ko.observable(groupItem.OptanonGroupId == requestedOptanonGroupId || groupItem.Parent == requestedOptanonGroupId);
+                        
+                        this.FirstPartyCookies.push(fpCookie);
+        			}
+            }
+
+
+            if (this.orginalSelectedFilters.length == 0) {
+                var arrayLength = this.FirstPartyCookies().length;
+                for (let i = 0; i < arrayLength; i++) {
+                    var fpCookie = this.FirstPartyCookies()[i];
+                    fpCookie.matchesFilter(true)
+                }
+                document.getElementById("noFilter").style = "Display:block";
+                document.getElementById("filterApplied").style = "Display:none";
+                document.documentElement.style.setProperty('--filterColor', this.data.purposeListItemTitleTextColorCalculated);
+            }
+
+            this.delayedValue = ko.pureComputed(this.searchValue).extend({ rateLimit: { method: "notifyWhenChangesStop", timeout: 400 } });
+            this.delayedValue.subscribe(function (val) {
+                this.showingFilter(false);
+                const filter = val.toUpperCase();
+                this.showClearButton(filter.length > 0);
+
+                var arrayLength = this.FirstPartyCookies().length;
+                for (let i = 0; i < arrayLength; i++) {
+                    var fpCookie = this.FirstPartyCookies()[i];
+                    if (filter.length == 0 || fpCookie.searchName.includes(filter)) {
+                        fpCookie.didMatchSearch(true)
+                    } else {
+                        fpCookie.didMatchSearch(false)
+                    }
+                }
+            }, this);
+
+
+            self.allowAllOnSwitch = function () {
+                var switchIsOn = document.getElementById('allowAllSwitch').checked;
+
+                var arrayLength = this.FirstPartyCookies().length;
+                for (let i = 0; i < arrayLength; i++) {
+                    var fpCookie = this.FirstPartyCookies()[i];
+                    if (fpCookie.matchesFilter() == true && fpCookie.didMatchSearch() == true) {
+                        fpCookie.uiControlState(switchIsOn);
+                    }
+                }
+                return true;
+            }
+
+
+            self.goBack = function () {
+				history.back();
+            }
+
+            self.onCheck = function (item) {
+                var SdkId = item.SdkId;
+                var uiControlState = item.uiControlState().toString();
+                Unity.call("HTTPS://OTSDK/sdklist|updateconsentvalueforsdk|" + SdkId + "|" + uiControlState);
+                return true;
+            }
+
+            self.clear = function () {
+                this.showClearButton(false);
+                this.searchValue("");
+
+                var arrayLength = this.FirstPartyCookies().length;
+                for (let i = 0; i < arrayLength; i++) {
+                    var fpCookie = this.FirstPartyCookies()[i];
+                    fpCookie.didMatchSearch(true)
+                }
+			}
+
+            self.filterOnClick = function (item) {
+                this.showingFilter(!this.showingFilter());
+                return true;
+            }
+
+
+            self.filterCancelOnClick = function (item) {
+
+                this.showingFilter(false);
+
+                try {
+
+                    var arrayLength = this.FilterGroupNames().length;
+                    for (let i = 0; i < arrayLength; i++) {
+                        var filterItem = this.FilterGroupNames()[i];
+                        var shouldSelect = this.orginalSelectedFilters.includes(filterItem.filterName);
+                        filterItem.isSelected(shouldSelect);
+                    }
+
+                } catch (err) {
+                    document.getElementById("errorMsg").innerHTML = err.message;
+                }
+
+                return true;
+            }
+        }
+
+        function bannerColorsChanged(data) { }
+        function pcColorsChanged(data) { }
+        function vendorColorsChanged(data) { }
+        function groupsChanged(data) { }
+        function sdkListConsentsChanged(data) {
+            for (var SdkId in data) {
+
+                var arrayLength = viewModel.FirstPartyCookies().length;
+                for (let i = 0; i < arrayLength; i++) {
+
+                    var fpc = viewModel.FirstPartyCookies()[i];
+
+                    if (fpc.SdkId == SdkId) {
+
+                        var remoteItemValue = Boolean(data[SdkId]);
+
+                        fpc.uiControlState(remoteItemValue);
+                        break;
+                    }
+                }
+            }
+        }
+
+	</script>
+
+</head>
+
+<body onload="onLoad()" data-bind="style:{'background-color':data.backgroundColorCalculated}">
+
+
+	<div id="errorMsg"></div>
+
+    <div class="wrapper">
+
+        <div id="header" class="header">
+
+            <div id="topNavBar" class="topNarBar" data-bind="visible:data.showNavBar">
+
+                <div role="button" class="chevron-back" data-bind="click:goBack, visible:data.showBackButton, style:{color:data.titleTextColorCalculated}, attr:{'aria-label':data.pCenterBackText}" tabindex="0"></div>
+
+                <div class="searchContainer-sdkList">
+                    <!--search icon-->
+                    <span class="search-icon-sdklist">
+                        <svg focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"></path></svg>
+                    </span>
+
+                    <!--search text box-->
+                    <input role="search" type="text" class="search-sdklist" data-bind="attr: {placeholder: data.pCenterCookieListSearch}, textInput:searchValue, hasFocus: searchHasFocus, style:{'background-color':data.vendorListSearchBackgroundColorCalculated, color:data.vendorListSearchBarTextColorCalculated}" id="sdk-list-search">
+
+                    <!--clear icon-->
+                    <img role="button" alt="data.sdklistClearFiltersText" data-bind="visible:showClearButton, click:clear, attr:{alt: data.sdklistClearFiltersText}" class="clear-icon-sdklist" src="data:image/svg+xml;utf8;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iaXNvLTg4NTktMSI/Pgo8IS0tIEdlbmVyYXRvcjogQWRvYmUgSWxsdXN0cmF0b3IgMTkuMC4wLCBTVkcgRXhwb3J0IFBsdWctSW4gLiBTVkcgVmVyc2lvbjogNi4wMCBCdWlsZCAwKSAgLS0+CjxzdmcgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB4bWxuczp4bGluaz0iaHR0cDovL3d3dy53My5vcmcvMTk5OS94bGluayIgdmVyc2lvbj0iMS4xIiBpZD0iQ2FwYV8xIiB4PSIwcHgiIHk9IjBweCIgdmlld0JveD0iMCAwIDUxLjk3NiA1MS45NzYiIHN0eWxlPSJlbmFibGUtYmFja2dyb3VuZDpuZXcgMCAwIDUxLjk3NiA1MS45NzY7IiB4bWw6c3BhY2U9InByZXNlcnZlIiB3aWR0aD0iMTZweCIgaGVpZ2h0PSIxNnB4Ij4KPGc+Cgk8cGF0aCBkPSJNNDQuMzczLDcuNjAzYy0xMC4xMzctMTAuMTM3LTI2LjYzMi0xMC4xMzgtMzYuNzcsMGMtMTAuMTM4LDEwLjEzOC0xMC4xMzcsMjYuNjMyLDAsMzYuNzdzMjYuNjMyLDEwLjEzOCwzNi43NywwICAgQzU0LjUxLDM0LjIzNSw1NC41MSwxNy43NCw0NC4zNzMsNy42MDN6IE0zNi4yNDEsMzYuMjQxYy0wLjc4MSwwLjc4MS0yLjA0NywwLjc4MS0yLjgyOCwwbC03LjQyNS03LjQyNWwtNy43NzgsNy43NzggICBjLTAuNzgxLDAuNzgxLTIuMDQ3LDAuNzgxLTIuODI4LDBjLTAuNzgxLTAuNzgxLTAuNzgxLTIuMDQ3LDAtMi44MjhsNy43NzgtNy43NzhsLTcuNDI1LTcuNDI1Yy0wLjc4MS0wLjc4MS0wLjc4MS0yLjA0OCwwLTIuODI4ICAgYzAuNzgxLTAuNzgxLDIuMDQ3LTAuNzgxLDIuODI4LDBsNy40MjUsNy40MjVsNy4wNzEtNy4wNzFjMC43ODEtMC43ODEsMi4wNDctMC43ODEsMi44MjgsMGMwLjc4MSwwLjc4MSwwLjc4MSwyLjA0NywwLDIuODI4ICAgbC03LjA3MSw3LjA3MWw3LjQyNSw3LjQyNUMzNy4wMjIsMzQuMTk0LDM3LjAyMiwzNS40NiwzNi4yNDEsMzYuMjQxeiIgZmlsbD0iIzAwMDAwMCIvPgo8L2c+CjxnPgo8L2c+CjxnPgo8L2c+CjxnPgo8L2c+CjxnPgo8L2c+CjxnPgo8L2c+CjxnPgo8L2c+CjxnPgo8L2c+CjxnPgo8L2c+CjxnPgo8L2c+CjxnPgo8L2c+CjxnPgo8L2c+CjxnPgo8L2c+CjxnPgo8L2c+CjxnPgo8L2c+CjxnPgo8L2c+Cjwvc3ZnPgo=" />
+
+                    <!--filter icon-->
+                    <div id="noFilter" class="search-filter-icon" data-bind="click:filterOnClick, attr:{'aria-label':data.pCenterCookieListFilterAria}" , tabindex="3">
+                        <svg focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 700"><path d="m285.25 294.21v166.91c0 6.0547 3.1484 11.691 8.2969 14.875 2.8008 1.75 5.9844 2.625 9.2031 2.625 2.6602 0 5.3555-0.62891 7.8398-1.8555l94.465-47.25c5.9141-2.9766 9.6602-9.0312 9.6602-15.645v-119.66l153.44-184.14c4.375-5.2148 5.2852-12.496 2.4141-18.621-2.9062-6.1602-9.0664-10.078-15.855-10.078h-409.46c-6.7891 0-12.949 3.9219-15.855 10.078-2.8711 6.1602-1.9258 13.406 2.4492 18.656zm232.12-177.84-133.56 160.3c-2.6289 3.1484-4.0625 7.1055-4.0625 11.199v115.18l-59.465 29.75v-144.93c0-4.0938-1.4336-8.0508-4.0586-11.199l-133.56-160.3z"></path></svg>
+                    </div>
+
+                    <div id="filterApplied" class="search-filter-icon" data-bind="click:filterOnClick, attr:{'aria-label':data.pCenterCookieListFilterAria}" , tabindex="3">
+                        <svg focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 934 934"><path d="M 380.33,392.28 L 380.33,614.83 C 380.33,622.9 384.53,630.41 391.4,634.66 395.13,636.99 399.38,638.16 403.67,638.16 407.21,638.16 410.81,637.32 414.12,635.69 L 540.07,572.69 C 547.96,568.72 552.95,560.64 552.95,551.83 L 552.95,392.28 757.54,146.76 C 763.37,139.81 764.59,130.1 760.76,121.93 756.88,113.72 748.67,108.49 739.62,108.49 L 193.67,108.49 C 184.62,108.49 176.41,113.72 172.53,121.93 168.7,130.14 169.96,139.81 175.8,146.81 L 380.33,392.28 Z M 509,539 L 427.04,577.07 509,539 Z M 509,539"></path></svg>
+                    </div>
+                </div>
+            </div>
+
+            <!--allow all consent toggle-->
+            <div>
+                <table class="vListTable" style="border-color: transparent;">
+                    <tbody>
+                        <tr style="border-color: transparent; ">
+
+                            <td class="vListTable-nameCol" style="border-color: transparent;">
+                                <label style="font-weight:bold" data-bind="text:data.sdkListAllowAllConsentText, style:{color:data.listItemTitleTextColorCalculated}">$ALLOW ALL CONSENT</label>
+                            </td>
+
+                            <td class="vListTable-switchCol" style="text-align: right; border-color: transparent;">
+                                <div>
+                                    <label class="switch">
+                                        <input id="allowAllSwitch" type="checkbox" data-bind="checked:isAllFilteredSelected, click: allowAllOnSwitch">
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
+                            </td>
+
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="content" class="content">
+            <table width="100%">
+                <tbody data-bind="foreach: filteredFirstPartyCookies">
+                    <tr>
+                        <td>
+                            <!--Consent Category Name-->
+                            <label style="font-weight:bold" data-bind="text:Name, style:{color:$parent.data.purposeListItemTitleTextColorCalculated, fontSize:$parent.data.purposeListTitleFontSize}">titleText</label>
+
+                            <!-- Description Text -->
+                            <div data-bind="text:Description, style:{color:$parent.data.purposeListTitleTextColorCalculated, fontSize:$parent.data.descriptionFontSize}"></div>
+                        </td>
+
+                        <td style="text-align:right">
+                            <!--Always active label-->
+                            <div data-bind="visible:showAlwaysActive">
+                                <label style="white-space: nowrap; font-weight:bold" data-bind="visible:$parent.data.purposeListItemAlwaysActiveLabelTextShow, html:$parent.data.purposeListItemAlwaysActiveLabelText, style:{color:$parent.data.purposeListItemAlwaysActiveLabelColorCalculated, fontSize:$parent.data.purposeListItemAlwaysActiveLabelFontSize}">Always Active</label>
+                            </div>
+                            <!--Consent Toggle-->
+                            <div data-bind="visible:!showAlwaysActive">
+                                <label tabindex="0" class="switch" data-bind="click:onCheck">
+                                    <input aria-hidden="true" tabindex="-1" type="checkbox" data-bind="checked: uiControlState">
+                                    <!--click:onCheck, attr: { id: 'toggle_' + CustomGroupId }"-->
+                                    <span aria-hidden="true" tabindex="-1" class="slider round"></span>
+                                </label>
+                            </div>
+                        </td>
+                    </tr>
+
+                    <hr />
+                </tbody>
+            </table>
+        </div>
+
+
+        <div id="footer" class="footer" data-bind="visible:showingFilter, style:{'background-color':data.backgroundColorCalculated}" style="margin-left: -20px; margin-right:-20px; margin-bottom:-10px; padding-right:5px; padding-left:5px; padding-bottom:20px;">
+
+
+            <!--Cancel Button Show As TEXT-->
+            <div tabindex="0" style="margin-left: 5px; margin-top: 10px; font-weight: bold" data-bind="hasFocus: showingFilter, click:filterCancelOnClick, text:data.sdklistCancelFiltersText, style:{color:data.purposeListItemTitleTextColorCalculated, fontSize:data.purposeListTitleFontSize}">$Close Filter Dialig</div>
+            <hr />
+
+
+            <!--list of filter options-->
+            <table class="sdkFilterTable" style="border-color: transparent;">
+
+                <tbody data-bind="foreach: FilterGroupNames">
+                    <tr style="border-color: transparent; ">
+
+                        <!--filter name-->
+                        <td style="border-color: transparent;">
+                            <label data-bind="text: filterName, style:{color:$parent.data.purposeListItemTitleTextColorCalculated, fontSize:$parent.data.purposeListTitleFontSize}">$GroupNameMobile</label>
+                        </td>
+
+                        <!--filter switch-->
+                        <td class="sdkFilterTable-switchCol" style="text-align: right; border-color: transparent;">
+                            <div>
+                                <label class="switch">
+                                    <input type="checkbox" data-bind="checked: isSelected">
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
+                        </td>
+
+                    </tr>
+                </tbody>
+            </table>
+            
+            
+            <!--Apply Filter button-->
+            <input type='button' class="cmdButton" style="margin-top:1em; margin-bottom:1em;" data-bind="click:filterOnClick, attr:{value:data.sdklistApplyFiltersText}, style:{color:data.savePreferencesButtonTextColorCalculated, backgroundColor:data.savePreferencesButtonColorCalculated, 'border-radius':data.savePreferencesButtonBorderRadius, fontSize:data.savePreferencesButtonFontSize}" />
+
+            <div style="margin-bottom:1.5em;"></div>
+
+        </div>
+        
+    </div>
+
+</body>
+</html>

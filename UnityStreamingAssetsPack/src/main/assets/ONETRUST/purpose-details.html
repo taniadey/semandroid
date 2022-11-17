@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<title>Android WebView</title>
+
+	<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
+	<meta charset="utf-8" />
+	<script type="text/javascript" src="PreferenceCenterData.json"></script>
+	<script type="text/javascript" src="ot-utility.js"></script>
+	<link rel="stylesheet" type="text/css" href="onetrust.css" />
+	<script type='text/javascript' src='knockout-3.5.1.js'></script>
+
+
+	<script type='text/javascript'>
+
+
+		var viewModel;
+
+		function onLoad() {
+
+			try {
+			if (window.navigator.userAgent.toLowerCase().indexOf("iphone") != -1)
+			{
+             		if (window && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.unityControl)
+	            	{
+						window.Unity = 
+						{	
+                			call: function(msg) 
+						{
+					    window.webkit.messageHandlers.unityControl.postMessage(msg);
+	                    }
+                    }
+            }
+            else
+            {
+	            window.Unity = 
+				{
+	                        	call: function(msg) 
+					{
+		                           window.location = 'unity:' + msg;
+                  			}
+                	}
+            	}
+       		}
+			
+				doDataBinding();
+			}
+			catch (err) {
+				document.getElementById("errorMsg").innerHTML = err.message;
+			}
+			finally {
+                Unity.call('HTTPS://OTSDK/purposeDetails|didLoadData');
+			}
+
+		}
+
+		function doDataBinding() {
+			viewModel = new PurposeDetailsViewModel();
+			ko.applyBindings(viewModel);
+		}
+
+
+		function groupsChanged(data) {
+			for (const jsonDataKey in data) {
+				var remoteItem = data[jsonDataKey];
+				for (const jsonDataKey in viewModel.requestedItems) {
+					const localItem = viewModel.requestedItems[jsonDataKey];
+					if (localItem.CustomGroupId == remoteItem.CustomGroupId) {
+						localItem.uiControlState(remoteItem.uiControlState);
+						localItem.uiControlState_LI(remoteItem.uiControlState_LI);
+						break;
+					}
+				}
+			}
+		}
+
+
+
+
+		function onViewLegal() {
+			window.location = viewModel.data.IabLegalTextUrl;
+		}
+
+		function PurposeDetailsViewModel() {
+
+			this.data = jsonDataFromFile;
+
+
+			// for debugging purposes
+
+			// this.data.purposeDetailsLinksShowSDKList = true;
+
+			// end debugging
+
+			const queryString = window.location.search;
+			const urlParams = new URLSearchParams(queryString);
+			this.requestedOptanonGroupId = urlParams.get('OptanonGroupId');
+
+			this.parentPurposeIsIabPurpose = false;
+			this.isShowingLegal = this.data.purposeDetailsDescriptionDetails == "legal";
+			this.hasAtLeast1Cookie = false;
+
+
+			this.requestedItems = [];
+			for (const jsonDataKey in this.data.groups) {
+				const groupItem = this.data.groups[jsonDataKey];
+
+				groupItem.uiControlState = ko.observable(parseInt(groupItem["uiControlState"]));
+				groupItem.uiControlState_LI = ko.observable(parseInt(groupItem["uiControlState_LI"]));
+
+				if (groupItem.IsIabPurpose && this.isShowingLegal) {
+					groupItem.GroupDescription = groupItem.DescriptionLegal
+				}
+
+                groupItem.GroupDescription = groupItem.GroupDescription.replace(/\n/gi, "<br>");
+
+				if (groupItem.isParent === true) {
+					if (groupItem.OptanonGroupId === this.requestedOptanonGroupId) {
+						this.parentPurposeIsIabPurpose = groupItem["IsIabPurpose"];
+						this.requestedItems.unshift(groupItem); //<-- this should be the first item in the array;
+						if ((groupItem["Type"] == "COOKIE" || groupItem["Type"] == "BRANCH") && groupItem.FirstPartyCookies.length > 0) {
+							this.hasAtLeast1Cookie = true;
+						}
+					}
+				} else {
+					if (groupItem.Parent === this.requestedOptanonGroupId) {
+						if (groupItem.parentShowSubgroup == true) {
+							if ((groupItem["Type"] == "COOKIE" || groupItem["Type"] == "BRANCH") && groupItem.FirstPartyCookies.length > 0) {
+								this.hasAtLeast1Cookie = true;
+								this.requestedItems.push(groupItem);
+							}
+							else if (groupItem["Type"] == "IAB2_PURPOSE" || groupItem["Type"] == "IAB2_SPL_PURPOSE" || groupItem["Type"] == "IAB2_FEATURE" || groupItem["Type"] == "IAB2_SPL_FEATURE") {
+								this.requestedItems.push(groupItem);
+								if (groupItem.FirstPartyCookies.length > 0) {
+									this.hasAtLeast1Cookie = true;
+								}
+							}
+                        } else {
+                            if ((groupItem["Type"] == "COOKIE" || groupItem["Type"] == "BRANCH") && groupItem.FirstPartyCookies.length > 0) {
+								this.hasAtLeast1Cookie = true;
+                                this.requestedItems.push(groupItem);
+                            }
+						}
+					}
+				}
+
+			}
+
+
+			this.shouldShowLegitimateInterestToggleMaster = true;
+			if (this.data.LegIntSettings != null) {
+                if (this.data.LegIntSettings.PAllowLI != null) {
+					this.shouldShowLegitimateInterestToggleMaster = this.data.LegIntSettings.PAllowLI;
+                }
+			}
+
+
+			///////////////////////////////////////
+			// modify the toggle button colors;
+			///////////////////////////////////////
+			document.documentElement.style.setProperty('--toggleBorderColor', this.data.descriptionTextColorCalculated);
+			document.documentElement.style.setProperty('--toggleActiveColor', this.data.toggleActiveColorCalculated);
+			document.documentElement.style.setProperty('--toggleInactiveColor', this.data.toggleInactiveColorCalculated);
+			document.documentElement.style.setProperty('--toggleActiveColorThumb', pSBC(-0.42, this.data.toggleActiveColorCalculated));
+			document.documentElement.style.setProperty('--toggleInactiveColorThumb', pSBC(-0.50, this.data.toggleInactiveColorCalculated));
+
+			///////////////////////////////////////
+			// color for table borders & hr;
+			// color for table borders and <hr>'s ;
+			///////////////////////////////////////
+			var shadeDelta = 0.20;
+			if (this.data.backgroundColorCalculated.match(/^(?:white|#fff(?:fff)?|rgba?\(\s*255\s*,\s*255\s*,\s*255\s*(?:,\s*1\s*)?\))$/i)) {
+				shadeDelta = shadeDelta * -1;
+			}
+			document.documentElement.style.setProperty('--tableBorderColor', pSBC(shadeDelta, this.data.backgroundColorCalculated));
+
+
+			///////////////////////////////////////
+			// rules for showing links
+			///////////////////////////////////////
+			if (this.data.purposeDetailsLinksPosition == null || this.data.purposeDetailsLinksPosition == "") {
+				this.data.purposeDetailsLinksPosition = "bottom";
+			}
+			this.showLinksTop = this.data.purposeDetailsLinksPosition == "top";
+			this.showLinksBottom = this.data.purposeDetailsLinksPosition == "bottom";
+			this.showSDKListLink = this.data.purposeDetailsLinksShowSDKList && this.hasAtLeast1Cookie;
+			this.showIABVendorListLink = this.parentPurposeIsIabPurpose;
+			this.showLegalTextLink = this.data.purposeDetailsDescriptionDetails == "user_friendly" && this.parentPurposeIsIabPurpose;
+
+
+
+			///////////////////////////////////////
+			// commands
+			self.sdkListOnClick = function () {
+				window.location = "sdk-list.html?OptanonGroupId=" + this.requestedOptanonGroupId;
+			}
+
+			self.listOfVendorsOnClick = function () {
+				window.location = 'vendors.html?from=preference-details&OptanonGroupId=' + this.requestedOptanonGroupId;
+			}
+
+			self.goBack = function () {
+                Unity.call('HTTPS://OTSDK/purposeDetails|back');
+			}
+
+			self.onCheck = function (item) {
+				var OptanonGroupId = item.OptanonGroupId;
+				var uiControlState = item.uiControlState().toString();
+				var autoUpdateParentChildRelationship = "true"
+                Unity.call("HTTPS://OTSDK/purposedetails|updateConsentValueForCategory|" + OptanonGroupId + "|" + uiControlState + "|" + autoUpdateParentChildRelationship);
+				return true;
+			}
+
+			self.onCheckLI = function (item) {
+				var OptanonGroupId = item.OptanonGroupId;
+				var uiControlState = item.uiControlState_LI().toString();
+                Unity.call("HTTPS://OTSDK/purposedetails|updateconsentvalueforcategoryli|" + OptanonGroupId + "|" + uiControlState);
+				return true;
+			}
+		}
+
+        function bannerColorsChanged(data) { }
+        function pcColorsChanged(data) { }
+		function vendorColorsChanged(data) { }
+        function sdkListConsentsChanged(data) { }
+
+	</script>
+
+</head>
+
+<body onload="onLoad()" data-bind="style:{'background-color':data.backgroundColorCalculated}">
+
+	<div id="errorMsg"></div>
+
+	<div class="wrapper">
+		<div class="header">
+			<div class="topNarBar">
+				<div class="pageTitle"></div>
+				<div role="button" class="chevron-back" data-bind="click:goBack, style:{color:data.titleTextColorCalculated}, attr:{'aria-label':data.pCenterBackText}" , tabindex="0"></div>
+			</div>
+		</div>
+
+		<div class="content">
+
+			<!-- Purposes -->
+			<div id="purposeList" style="width: 100%" data-bind="foreach: requestedItems">
+				<div data-bind="css: { indented: isParent == false }">
+
+					<!--category name-->
+					<div style="flex:auto;">
+						<p style="font-weight:bold" data-bind="css:{indented: isParent == false }, html:GroupNameMobile, style:{color:$parent.data.purposeListItemTitleTextColorCalculated, fontSize:$parent.data.purposeListItemTitleFontSize}"></p>
+					</div>
+
+					<!--toggle for consent -- data-bind="visible:HasConsentOptOut"? -->
+					<div style="display: flex; margin-top:-20px" data-bind="visible:parentShowSubgroupToggle">
+
+						<!--Consent label-->
+						<div style="flex:auto;">
+							<p data-bind="html:$parent.data.purposeListItemConsentText, css:{indented: isParent == false }, style:{color:$parent.data.descriptionTextColorCalculated, fontSize:$parent.data.purposeListItemTitleFontSize}">$Consent</p>
+						</div>
+
+						<!--consent toggle-->
+						<div data-bind="visible:!isReadOnly" style="text-align: right;display:flex;align-items:center; margin-right:5px;">
+							<label class="switch">
+								<input type="checkbox" data-bind="checked: uiControlState, click:onCheck">
+								<span class="slider round"></span>
+							</label>
+						</div>
+
+						<!--always active label-->
+						<div data-bind="visible:isReadOnly" style="text-align: right;display:flex;align-items:center;">
+							<label style="white-space: nowrap; font-weight:bold" data-bind="html: $parent.data.purposeListItemAlwaysActiveLabelText, style:{color:$parent.data.purposeListItemAlwaysActiveLabelColorCalculated, fontSize:$parent.data.purposeListItemAlwaysActiveLabelFontSize}">$Always Active</label>
+						</div>
+
+
+					</div>
+
+					<!--toggle for Legitmate Interest -->
+					<div data-bind="visible:(HasLegIntOptOut && $parent.shouldShowLegitimateInterestToggleMaster && Type == 'IAB2_PURPOSE' && CustomGroupId != 'IABV2_1')" style="display: flex; margin-top: -10px;">
+
+						<!--LI lable-->
+						<div style="flex:auto;">
+							<p data-bind="html:$parent.data.purposeListItemLegitInterestText, css:{indented: isParent == false }, style:{color:$parent.data.descriptionTextColorCalculated, fontSize:$parent.data.purposeListItemTitleFontSize}">$Legitimate Interest</p>
+						</div>
+
+						<!--LI toggle-->
+						<div style="text-align: right; display: flex; align-items: center; margin-right: 5px;">
+							<label class="switch">
+								<input type="checkbox" data-bind="checked: uiControlState_LI, click:onCheckLI">
+								<span class="slider round"></span>
+							</label>
+						</div>
+
+					</div>
+
+
+					<!--top Links-->
+					<div id="topLinks" data-bind="visible:$parent.showLinksTop && isParent">
+
+						<!-- SDK List -->
+						<div style="margin-bottom:1em;" data-bind="visible:$parent.showSDKListLink">
+							<div style="text-decoration:underline" data-bind="click:sdkListOnClick, html:$parent.data.purposeDetailsLinksSDKListText, style:{color:$parent.data.policyLinkTextColorCalculated, fontSize:$parent.data.policyLinkFontSize, 'text-align':$parent.data.policyLinkTextAlign}">$purposeDetailsLinksSDKListText</div>
+						</div>
+
+						<!--List of IAB Vendors-->
+						<div style="margin-bottom: 1em;" data-bind="visible:$parent.showIABVendorListLink">
+							<div style="text-decoration:underline" data-bind="click:listOfVendorsOnClick, html:$parent.data.purposeDetailsLinksVendorListText, style:{color:$parent.data.policyLinkTextColorCalculated, fontSize:$parent.data.policyLinkFontSize, 'text-align':$parent.data.policyLinkTextAlign}">$purposeDetailsLinksVendorListText</div>
+						</div>
+
+						<!--View Full Legal Text-->
+						<div style="margin-bottom: 1em;" data-bind="visible:$parent.showLegalTextLink">
+							<div onclick="onViewLegal();" style="text-decoration:underline" data-bind="html:$parent.data.purposeDetailsLinksFullLegalText, style:{color:$parent.data.policyLinkTextColorCalculated, fontSize:$parent.data.policyLinkFontSize, 'text-align':$parent.data.policyLinkTextAlign}">$purposeDetailsLinksFullLegalText</div>
+						</div>
+
+					</div>
+
+
+					<!--description-->
+					<div style="white-space: pre-line;" data-bind="visible:parentShowSubgroupDescription, css:{indented: isParent == false},html:GroupDescription, style:{color:$parent.data.descriptionTextColorCalculated, fontSize:$parent.data.descriptionFontSize}"></div>
+					<hr data-bind="css: {indented: isParent == false}" />
+
+				</div>
+			</div>
+
+
+			<!--Bottom Links-->
+			<div id="bottomLinks" data-bind="visible:showLinksBottom">
+
+				<!-- SDK List -->
+				<div style="margin-top:1em;" data-bind="visible:showSDKListLink">
+					<div style="text-decoration:underline" data-bind="click:sdkListOnClick, html:data.purposeDetailsLinksSDKListText, style:{color:data.policyLinkTextColorCalculated, fontSize:data.policyLinkFontSize, 'text-align':data.policyLinkTextAlign}">$purposeDetailsLinksSDKListText</div>
+				</div>
+
+				<!--List of IAB Vendors-->
+				<div style="margin-top: 1em;" data-bind="visible:showIABVendorListLink">
+					<div style="text-decoration:underline" data-bind="click:listOfVendorsOnClick, html:data.purposeDetailsLinksVendorListText, style:{color:data.policyLinkTextColorCalculated, fontSize:data.policyLinkFontSize, 'text-align':data.policyLinkTextAlign}">$purposeDetailsLinksVendorListText</div>
+				</div>
+
+				<!--View Full Legal Text-->
+				<div style="margin-top: 1em;" data-bind="visible:showLegalTextLink">
+					<div onclick="onViewLegal();" style="text-decoration:underline" data-bind="html:data.purposeDetailsLinksFullLegalText, style:{color:data.policyLinkTextColorCalculated, fontSize:data.policyLinkFontSize, 'text-align':data.policyLinkTextAlign}, attr:{'aria-label':data.pcPrivacyLinkActionAriaLabel}">
+						$purposeDetailsLinksFullLegalText
+					</div>
+				</div>
+
+				</div>
+
+
+
+				<!--extra space @ the botton-->
+				<div style="margin-bottom:3em;"></div>
+
+			</div>
+
+
+		</div>
+
+	</div>
+
+</body>
+</html>

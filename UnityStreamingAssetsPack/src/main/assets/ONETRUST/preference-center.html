@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+
+	<title>Android WebView</title>
+
+	<meta name='viewport' content='width=device-width initial-scale=1.0, maximum-scale=1.0, user-scalable=no'>
+	<meta charset="utf-8" />
+	<script type="text/javascript" src="PreferenceCenterData.json"></script>
+	<script type="text/javascript" src="ot-utility.js"></script>
+	<script type='text/javascript' src='knockout-3.5.1.js'></script>
+	<link rel="stylesheet" type="text/css" href="onetrust.css" />
+
+
+	<script type="text/javascript">
+		
+		var viewModel;
+
+		function onLoad() {
+			try {
+				if (window.navigator.userAgent.toLowerCase().indexOf("iphone") != -1)
+				{
+					if (window && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.unityControl)
+					{
+						window.Unity = 
+								{ 
+									call: function(msg) 
+									{
+										window.webkit.messageHandlers.unityControl.postMessage(msg); 
+									}
+								}
+					}
+					else
+					{
+						window.Unity =
+								{
+									call: function(msg)
+									{
+										window.location = 'unity:' + msg;
+									}
+								}
+					}
+				}
+			
+				doDataBinding();
+			}
+			catch (err) {
+				document.getElementById("errorMsg").innerHTML = err.message;
+			}
+			finally {
+                Unity.call('HTTPS://OTSDK/preferencecenter|didLoadData');
+			}
+
+		}
+
+		function doDataBinding() {
+			viewModel = new PreferenceCenterModel();
+			ko.applyBindings(viewModel);
+			Array.from(document.querySelectorAll('a[target="_blank"]')).forEach(link => link.removeAttribute('target'));
+		};
+
+		function PreferenceCenterModel() {
+
+			try {
+
+
+				this.isIAB = false; // <-- if I have at least 1 IAB purpose, then we're an IAB template
+				this.showDividerBar = false;
+
+				this.data = jsonDataFromFile;
+				
+				this.showDividerBar = this.data.showDividerBar;
+				this.showManageServicesLabel = false;
+
+				// Prepare the "Parent Groups" Array
+				this.parentGroups = ko.observableArray([]);
+				for (const jsonDataKey in this.data.groups) {
+					var groupItem = this.data.groups[jsonDataKey];
+					if (groupItem.isParent == true) {
+
+						var showThisItem = false;
+
+						if (groupItem.Type == "BRANCH" && groupItem.childernCount > 0) {
+							showThisItem = true;
+
+						}
+                        else if ((groupItem.Type != "COOKIE" && groupItem.Type != "BRANCH") ||  (groupItem.Type == "COOKIE" && groupItem.FirstPartyCookies.length > 0)) {
+							showThisItem = true;
+
+						}
+						else if (groupItem.Type == "COOKIE" && groupItem.childernCount > 0) {
+							showThisItem = true;
+						}
+
+						if (showThisItem) {
+							groupItem.uiControlState = ko.observable(parseInt(groupItem["uiControlState"].toString()));
+							groupItem.uiControlState_LI = ko.observable(parseInt(groupItem["uiControlState_LI"].toString()));
+							this.parentGroups.push(groupItem);
+							if (groupItem["IsIabPurpose"] == true) { this.isIAB = true; }
+						}
+					}
+				}
+
+				if (this.isIAB == true) {
+					this.showManageServicesLabel = true;
+				}
+				else {
+					if (this.data.sdkListShow == true) {
+						this.showManageServicesLabel = true;
+                    }
+                }
+
+
+				// Should I show the back button?
+				const queryString = window.location.search;
+				const urlParams = new URLSearchParams(queryString);
+				const fromLocation = urlParams.get('from');
+				this.showBackButton = (fromLocation != null);
+
+
+				// should I show the top nav bar
+				this.data.showNavBar = (this.data.closeButtonShow == true || this.showBackButton == true);
+
+				// close button
+				this.closeButtonShowAsIcon = this.data.closeButtonShow == true && this.data.closeButtonShowAsLink == false && this.data.closeButtonShowText == false;
+                this.closeButtonShowAsTextButton = this.data.closeButtonShow == true && this.data.closeButtonShowAsLink == false && this.data.closeButtonShowText == true;
+				this.closeButtonShowAsLink = this.data.closeButtonShow == true && this.data.closeButtonShowAsLink == true && this.data.closeButtonShowText == true;
+                document.documentElement.style.setProperty('--closeButtonIconColor', this.data.closeButtonTextColorCalculated);
+
+                // custom aria labels
+                this.policyLinkAriaLabel = this.data.policyLinkText + ", " + this.data.pcPrivacyLinkActionAriaLabel;
+
+
+				// modify the toggle button colors;
+				document.documentElement.style.setProperty('--toggleBorderColor', this.data.titleTextColorCalculated);
+				document.documentElement.style.setProperty('--toggleActiveColor', this.data.toggleActiveColorCalculated);
+				document.documentElement.style.setProperty('--toggleInactiveColor', this.data.toggleInactiveColorCalculated);
+				document.documentElement.style.setProperty('--toggleActiveColorThumb', pSBC(-0.42, this.data.toggleActiveColorCalculated));
+				document.documentElement.style.setProperty('--toggleInactiveColorThumb', pSBC(-0.50, this.data.toggleInactiveColorCalculated));
+
+				// color for table borders and <hr>'s ;
+				var shadeDelta = 0.20;
+				if (this.data.backgroundColorCalculated.match(/^(?:white|#fff(?:fff)?|rgba?\(\s*255\s*,\s*255\s*,\s*255\s*(?:,\s*1\s*)?\))$/i)) {
+					shadeDelta = shadeDelta * -1;
+				}
+				document.documentElement.style.setProperty('--tableBorderColor', pSBC(shadeDelta, this.data.backgroundColorCalculated));
+
+				// we need to make sure this start with http if it does not already
+                if (this.data.policyLinkURL != null && !this.data.policyLinkURL.toLowerCase().startsWith("http")) {
+					this.data.policyLinkURL = "https://" + this.data.policyLinkURL;
+				}
+                
+
+
+			} catch (err) {
+				document.getElementById("errorMsg").innerHTML = err.message;
+			}
+
+
+			self.purposeOnClick = function (item) {
+				var url = "purpose-details.html?OptanonGroupId=" + item.OptanonGroupId;
+				rememberPositionThenNavigate(url);
+			}
+
+			self.generalVendorsOnClick = function () {
+				window.location = "vendors.html?from=preferenceCenter";
+			}
+
+			self.sdkListOnClick = function () {
+				window.location = "sdk-list.html?from=preferenceCenter";
+			}
+
+			self.goBack = function () {
+                Unity.call("HTTPS://OTSDK/preferenceCenter|back");
+			}
+
+			self.onClose = function () {
+				if (this.showBackButton) {
+                    Unity.call("HTTPS://OTSDK/preferenceCenter|back");
+				} else {
+                    Unity.call("HTTPS://OTSDK/preferenceCenter|close");
+				}
+			}
+
+
+			self.onCheck = function (item) {
+
+				var OptanonGroupId = item.OptanonGroupId;
+				var uiControlState = item.uiControlState().toString()
+				var autoUpdateParentChildRelationship = "true"
+                Unity.call("HTTPS://OTSDK/preferenceCenter|updateConsentValueForCategory|" + OptanonGroupId + "|" + uiControlState + "|" + autoUpdateParentChildRelationship);
+
+				return true;
+			}
+
+
+			self.policyLinkOnClick = function () {
+				window.location = this.data.policyLinkURL;
+			}
+
+		}
+
+
+		async function rememberPositionThenNavigate(url) {
+			const container = document.querySelector('.content');
+            Unity.call("HTTPS://OTSDK/preferenceCenter|rememberposition|" + container.scrollTop);
+			await new Promise(resolve => setTimeout(resolve, 100));
+			window.location = url;
+		}
+
+
+		function groupsChanged(data) {
+			
+			try {
+			
+                // document.getElementById("errorMsg").innerHTML = "groupsChanged; ";
+                for (const jsonDataKey in data) {
+
+                    var remoteItem = data[jsonDataKey];
+
+                    var arrayLength = viewModel.parentGroups().length;
+                    for (let i = 0; i < arrayLength; i++) {
+
+                        var localItem = viewModel.parentGroups()[i];
+
+                        if (localItem.CustomGroupId == remoteItem.CustomGroupId) {
+
+                            localItem.uiControlState(parseInt(remoteItem.uiControlState.toString()));
+                            localItem.uiControlState_LI(parseInt(remoteItem.uiControlState_LI.toString()));
+
+							// for some reason, on Android API 31, the observable doesnt work, so we'll update the checkbox checked property the old fashioned way.
+                            document.getElementById('toggle_' + localItem.CustomGroupId).checked = Boolean(remoteItem.uiControlState);
+						
+                            break;
+                        }
+                    }
+				}
+
+
+			} catch (err) {
+				document.getElementById("errorMsg").innerHTML = err.message;
+
+			}
+
+		}
+
+		function updateScrollPosition(pos) {
+			if (pos > 0) {
+				const container = document.querySelector('.content');
+				container.scrollTop = pos;
+			}
+		}
+
+        function bannerColorsChanged(data) { }
+        function pcColorsChanged(data) { }
+		function vendorColorsChanged(data) { }
+        function sdkListConsentsChanged(data) { }
+
+	</script>
+</head>
+
+<body onload="onLoad()" data-bind="style:{'background-color':data.backgroundColorCalculated}">
+
+	<div id="errorMsg"></div>
+
+	<div class="wrapper">
+
+		<div class="header">
+
+			<div class="topNarBar" data-bind="visible:data.showNavBar">
+
+				<div class="pageTitle"></div>
+				<div class="chevron-back" data-bind="click:goBack, visible:false, style:{color:data.titleTextColorCalculated}"></div>
+
+				<!--Close Button Show As ICON-->
+				<div role="button" class="closeButton" data-bind="visible:closeButtonShowAsIcon, click:onClose, style:{'background-color':data.backgroundColorCalculated, 'border-radius':data.closeButtonBorderRadius}, attr:{'aria-label': data.closeText}">
+					<div class="closeIcon"></div>
+				</div>
+
+				<!--Close Button Show As TEXT BUTTON-->
+				<div style="position: fixed; top: 0; right: 0; margin-right: 10px; margin-top: 15px; " data-bind="visible:closeButtonShowAsTextButton, click:onClose">
+					<div data-bind="click:onClose, text:data.closeButtonText, style:{'background-color':data.closeButtonColorCalculated, color:data.closeButtonTextColorCalculated, fontSize:data.closeButtonFontSize, 'border-radius':data.closeButtonBorderRadius}, attr:{'aria-label': data.closeText}" style="vertical-align: middle; white-space: nowrap; padding: 10px; font-weight: bold">𝗫</div>
+				</div>
+
+				<!--Close Button Show As LINK-->
+				<div role="button" style="position: fixed; top: 0; right: 0; margin-right: 10px; margin-top: 18px; " data-bind="visible:closeButtonShowAsLink, click:onClose">
+					<div role="button" data-bind="click:onClose, text:data.closeButtonText, style:{color:data.closeButtonTextColorCalculated, fontSize:data.closeButtonFontSize}, attr:{'aria-label': data.closeText}" style="vertical-align: middle; white-space: nowrap; padding: 10px; background-color: transparent; text-decoration: underline; font-weight: bold">𝗫</div>
+				</div>
+
+
+			</div>
+
+		</div>
+
+
+		<div class="content">
+
+			<!--Logo Image-->
+			<div class="logo" data-bind="visible:data.logoShow, style:{'margin-top':data.showNavBar ? '2em' : '0.5em'}">
+				<img style="width:33%" data-bind="attr:{src: data.logoLocalPathForPC, alt: data.pcLogoScreenReader}" />
+			</div>
+			<br />
+
+			<!--Title Text-->
+			<div role="heading" aria-level="1" style="font-weight:bold; margin-bottom: 1em;" data-bind="visible:data.titleShow, html:data.titleText, style:{color:data.titleTextColorCalculated, fontSize:data.titleFontSize, 'text-align':data.titleTextAlign}">titleText</div>
+
+
+			<!--Description Text-->
+			<div style="white-space: pre-line; margin-bottom: 1em;" data-bind="visible:data.descriptionShow, html:data.descriptionText, style:{color:data.descriptionTextColorCalculated, fontSize:data.descriptionFontSize, 'text-align':data.descriptionTextAlign}">descriptionText</div>
+
+
+			<!--Privacy Link-->
+			<div data-bind="click:policyLinkOnClick, visible:data.policyLinkShow, text:data.policyLinkText, style:{color:data.policyLinkTextColorCalculated, fontSize:data.policyLinkFontSize, 'text-align':data.policyLinkTextAlign}, attr:{'aria-label':policyLinkAriaLabel}" style="margin-bottom:1.5em; text-decoration:underline;">policyLinkText</div>
+
+			<!-- Bar Separator-->
+			<div style="width: 100%; height: 10px;" data-bind="visible:showDividerBar, style:{'background-color':data.lineBreakColor}"></div>
+
+			<!--Manage Consent Preferences Text-->
+			<div role="heading" aria-level="1" style="font-weight: bold; margin-bottom: 0.5em;" data-bind="visible:showManageServicesLabel ,text:data.sdkListManageServicesLabel, style:{color:data.purposeListTitleTextColorCalculated, fontSize:data.purposeListTitleFontSize, 'text-align':data.purposeListTitleAlign}">manageServicesText</div>
+
+			<!--Vendor List Link-->
+			<table class="pcGeneralVendorsTable" width="100%" data-bind="visible:isIAB">
+				<tbody>
+					<tr>
+						<td data-bind="style:{'text-align':data.descriptionTextAlign}">
+							<label style="white-space: nowrap; font-weight:bold" data-bind="text: data.generalVendorListTitle, click:generalVendorsOnClick, style:{color:data.generalVendorListTextColorCalculated, fontSize:data.generalVendorListTitleFontSize}"></label>
+						</td>
+						<td style="text-align:right; width:10px">
+							<label class="chevron-right" data-bind="click:generalVendorsOnClick, style:{color:data.generalVendorListTextColorCalculated}" />
+						</td>
+					</tr>
+				</tbody>
+			</table>
+
+			<!--SDK List Link-->
+			<table class="pcGeneralVendorsTable" width="100%" data-bind="visible:data.sdkListShow">
+				<tbody>
+					<tr>
+						<td data-bind="style:{'text-align':data.descriptionTextAlign}">
+							<label style="white-space: nowrap; font-weight:bold" data-bind="text: data.sdkListLabel, click:sdkListOnClick, style:{color:data.generalVendorListTextColorCalculated, fontSize:data.generalVendorListTitleFontSize}"></label>
+						</td>
+						<td style="text-align:right; width:10px">
+							<label class="chevron-right" data-bind="click:sdkListOnClick, style:{color:data.generalVendorListTextColorCalculated}" />
+						</td>
+					</tr>
+				</tbody>
+			</table>
+
+			<!-- Bar Separator-->
+			<div style="width: 100%; height: 10px;" data-bind="visible:showDividerBar, style:{'background-color':data.lineBreakColor}"></div>
+
+			<div style="width: 100%; margin-top: 1em; margin-bottom: 2em; display: flex; justify-content: center">
+
+				<!--Allow All Button-->
+				<input type='button' value='accept all command' onclick="Unity.call('HTTPS://OTSDK/preferenceCenter|allowAll');"
+					   class="pcButton" data-bind="visible:data.acceptAllButtonShow, attr:{value:data.acceptAllButtonText}, style:{color:data.acceptAllButtonTextColorCalculated, backgroundColor:data.acceptAllButtonColorCalculated, 'border-radius':data.acceptAllButtonBorderRadius}" />
+
+				<!--Reject All Button-->
+				<input type='button' value='reject all command' onclick="Unity.call('HTTPS://OTSDK/preferenceCenter|rejectAll');"
+					   class="pcButton" data-bind="visible:data.rejectAllButtonShow, attr:{value:data.rejectAllButtonText}, style:{color:data.rejectAllButtonTextColorCalculated, backgroundColor:data.rejectAllButtonColorCalculated, 'border-radius':data.rejectAllButtonBorderRadius}" />
+
+			</div>
+
+
+			<!--Manage Consent Preferences Text-->
+			<div role="heading" aria-level="1" style="font-weight: bold; margin-bottom: 0.5em;" data-bind="visible:data.purposeListTitleShow, text:data.purposeListTitleText, style:{color:data.purposeListTitleTextColorCalculated, fontSize:data.purposeListTitleFontSize, 'text-align':data.purposeListTitleAlign}">purposeListTitleText</div>
+
+
+			<!--Purpose List-->
+			<table width="100%">
+				<tbody data-bind="foreach: parentGroups">
+					<tr>
+						<!--Consent Category Name-->
+						<td>
+							<label style="font-weight:bold" data-bind="html: GroupNameMobile, click:purposeOnClick, style:{color:$parent.data.purposeListItemTitleTextColorCalculated, fontSize:$parent.data.purposeListItemTitleFontSize}"></label>
+						</td>
+
+
+						<td style="text-align:right">
+
+							<!--Always active label-->
+							<div data-bind="css: { hide: isReadOnly == false }">
+								<label style="white-space: nowrap; font-weight:bold" data-bind="visible:$parent.data.purposeListItemAlwaysActiveLabelTextShow, html:$parent.data.purposeListItemAlwaysActiveLabelText, click:purposeOnClick, style:{color:$parent.data.purposeListItemAlwaysActiveLabelColorCalculated, fontSize:$parent.data.purposeListItemAlwaysActiveLabelFontSize}">Always Active</label>
+							</div>
+
+							<!--Consent Toggle-->
+							<div data-bind="css: { hide: isReadOnly == true }">
+								<label tabindex="0" class="switch">
+									<input aria-hidden="true" tabindex="-1" type="checkbox" data-bind="checked: uiControlState, click:onCheck, attr: { id: 'toggle_' + CustomGroupId }">
+									<span aria-hidden="true" tabindex="-1" class="slider round"></span>
+								</label>
+							</div>
+						</td>
+
+						<!--chevron-right-->
+						<td style="text-align:right; width:10px"><label class="chevron-right" data-bind="click:purposeOnClick, style:{color:$parent.data.purposeListItemTitleTextColorCalculated}" /></td>
+
+					</tr>
+				</tbody>
+			</table>
+
+			<br />
+
+		</div>
+
+		<div class="footer">
+
+			<!--FOOTER BUTTONS-->
+			<div style="display: flex; justify-content: center">
+
+				<!--Confirm Choices Button-->
+				<input type='button' value='confirm choices command'
+					   onclick="Unity.call('HTTPS://OTSDK/preferenceCenter|confirmChoices');"
+					   style="padding-top:14px; padding-bottom:14px;"
+					   class="cmdButton"
+					   data-bind="attr:{value:data.savePreferencesButtonText}, style:{color:data.savePreferencesButtonTextColorCalculated, backgroundColor:data.savePreferencesButtonColorCalculated, 'border-radius':data.savePreferencesButtonBorderRadius, fontSize:data.savePreferencesButtonFontSize}" />
+
+			</div>
+			
+			<!--extra space @ the botton-->
+			<div style="margin-bottom:1em;"></div>
+
+		</div>
+
+	</div>
+
+</body>
+</html>
